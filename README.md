@@ -4,9 +4,6 @@ A hand-written lexer and recursive-descent parser for **Clite**, a small C-like 
 
 Type or load source code, then click a button to see either the token stream or the abstract syntax tree (AST).
 
-<!-- Add a screenshot of the GUI here, e.g. save it as docs/screenshot.png -->
-![Screenshot](docs/screenshot.png)
-
 ## Features
 
 ### Lexer
