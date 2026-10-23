@@ -1,22 +1,23 @@
-
 #include <windows.h>
-#include <commdlg.h>
+#include <commdlg.h> 
+
 #include <exception>
 #include <string>
 #include <vector>
 
 #include "Lexer.cpp"
+#include "Parser.cpp"
 
 #ifdef _MSC_VER
 #pragma comment(lib, "comdlg32.lib")
 #endif
-// CMake/MinGW: target_link_libraries(your_target comdlg32)
 
 // Control IDs
 #define ID_BTN_RUN 101
 #define ID_EDIT_INPUT 102
 #define ID_EDIT_OUTPUT 103
 #define ID_BTN_OPEN 104
+#define ID_BTN_PARSE 105
 
 static HWND hInputBox = nullptr;
 static HWND hOutputBox = nullptr;
@@ -54,6 +55,9 @@ static std::wstring Utf8ToWide(const std::string& s) {
     return out;
 }
 
+
+// File loading
+
 static bool ReadFileToString(const wchar_t* path, std::string& out) {
     HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -77,7 +81,7 @@ static bool ReadFileToString(const wchar_t* path, std::string& out) {
     if (out.size() >= 3 && (unsigned char)out[0] == 0xEF &&
         (unsigned char)out[1] == 0xBB && (unsigned char)out[2] == 0xBF) {
         out.erase(0, 3);
-        }
+    }
     return true;
 }
 
@@ -104,7 +108,7 @@ static void OpenFileIntoInput(HWND hwnd) {
     ofn.nMaxFile    = MAX_PATH;
     ofn.Flags       = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
 
-    if (!GetOpenFileNameW(&ofn)) return; // user cancelled
+    if (!GetOpenFileNameW(&ofn)) return; 
 
     std::string content;
     if (!ReadFileToString(path, content)) {
@@ -116,6 +120,7 @@ static void OpenFileIntoInput(HWND hwnd) {
 }
 
 
+// Lexer
 
 static void RunLexer() {
     try {
@@ -129,7 +134,6 @@ static void RunLexer() {
         int copied = GetWindowTextW(hInputBox, wide.data(), length + 1);
         wide.resize(copied);
 
-        // FIX 1: Named the lexer instance 'lexer' and used 'Tokenize()' (capital T)
         LEXER lexer(WideToUtf8(wide), 1, 1);
         std::vector<Token> tokens = lexer.Tokenize();
 
@@ -150,18 +154,45 @@ static void RunLexer() {
     }
 }
 
+static void RunParser() {
+    try {
+        int length = GetWindowTextLengthW(hInputBox);
+        if (length == 0) {
+            SetWindowTextW(hOutputBox, L"Input is empty!");
+            return;
+        }
+
+        std::wstring wide(length + 1, L'\0');
+        int copied = GetWindowTextW(hInputBox, wide.data(), length + 1);
+        wide.resize(copied);
+
+        LEXER lexer(WideToUtf8(wide), 1, 1);
+        std::string output = ParseTokensToString(lexer.Tokenize());
+
+        SetWindowTextW(hOutputBox, Utf8ToWide(output).c_str());
+    } catch (const std::exception& e) {
+        MessageBoxA(nullptr, e.what(), "Parser Exception Error", MB_OK | MB_ICONERROR);
+    } catch (...) {
+        MessageBoxA(nullptr, "An unknown error occurred during parsing.",
+                    "Unknown Error", MB_OK | MB_ICONERROR);
+    }
+}
+
+
+// Window
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_CREATE: {
             HINSTANCE inst = GetModuleHandleW(nullptr);
             HFONT mono = (HFONT)GetStockObject(ANSI_FIXED_FONT);
 
-            CreateWindowW(L"STATIC", L"Clite Source Input:", WS_VISIBLE | WS_CHILD,
-                          20, 10, 200, 20, hwnd, nullptr, inst, nullptr);
+            CreateWindowW(L"STATIC", L"Clite / JSON Source Input:", WS_VISIBLE | WS_CHILD,
+                          20, 10, 250, 20, hwnd, nullptr, inst, nullptr);
 
             hInputBox = CreateWindowW(
                 L"EDIT",
-                L"int main() {\r\n    int x = 42;\r\n    if (x > 10) {\r\n        x++;\r\n    }\r\n}",
+                L"int main() {\r\n    int x = -42;\r\n    float y = 1.5e-3;\r\n    if (x > 10) {\r\n        x++;\r\n    }\r\n}",
                 WS_VISIBLE | WS_CHILD | WS_BORDER | WS_TABSTOP | WS_VSCROLL |
                     ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
                 20, 35, 740, 200, hwnd, (HMENU)ID_EDIT_INPUT, inst, nullptr);
@@ -170,13 +201,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
             CreateWindowW(L"BUTTON", L"Open File...",
                           WS_VISIBLE | WS_CHILD | WS_TABSTOP,
-                          200, 245, 120, 30, hwnd, (HMENU)ID_BTN_OPEN, inst, nullptr);
-            
+                          190, 245, 120, 30, hwnd, (HMENU)ID_BTN_OPEN, inst, nullptr);
+
             CreateWindowW(L"BUTTON", L"Run Lexer",
                           WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_DEFPUSHBUTTON,
-                          330, 245, 120, 30, hwnd, (HMENU)ID_BTN_RUN, inst, nullptr);
+                          320, 245, 120, 30, hwnd, (HMENU)ID_BTN_RUN, inst, nullptr);
 
-            CreateWindowW(L"STATIC", L"Lexer Output (Tokens):", WS_VISIBLE | WS_CHILD,
+            CreateWindowW(L"BUTTON", L"Run Parser",
+                          WS_VISIBLE | WS_CHILD | WS_TABSTOP,
+                          450, 245, 120, 30, hwnd, (HMENU)ID_BTN_PARSE, inst, nullptr);
+
+            CreateWindowW(L"STATIC", L"Output (Tokens / AST):", WS_VISIBLE | WS_CHILD,
                           20, 285, 200, 20, hwnd, nullptr, inst, nullptr);
 
             hOutputBox = CreateWindowW(
@@ -192,6 +227,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (HIWORD(wp) == BN_CLICKED) {
                 switch (LOWORD(wp)) {
                     case ID_BTN_RUN:  RunLexer(); break;
+                    case ID_BTN_PARSE: RunParser(); break;
                     case ID_BTN_OPEN: OpenFileIntoInput(hwnd); break;
                 }
             }
@@ -233,4 +269,4 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     }
 
     return (int)msg.wParam;
-} // <--- FIX 2: Added the missing closing brace for WinMain
+}
