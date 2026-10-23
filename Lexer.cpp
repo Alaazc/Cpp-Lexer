@@ -1,6 +1,4 @@
-//
-// Created by alari on 10/15/2026.
-//
+#pragma once
 
 #include "Lexer.h"
 #include <cctype>
